@@ -9,6 +9,7 @@ import (
 
 	"forgejo.org/models"
 	"forgejo.org/models/db"
+	"forgejo.org/models/organization"
 	"forgejo.org/models/perm"
 	access_model "forgejo.org/models/perm/access"
 	repo_model "forgejo.org/models/repo"
@@ -20,6 +21,11 @@ import (
 func AddCollaborator(ctx context.Context, repo *repo_model.Repository, u *user_model.User) error {
 	if user_model.IsBlocked(ctx, repo.OwnerID, u.ID) || user_model.IsBlocked(ctx, u.ID, repo.OwnerID) {
 		return user_model.ErrBlockedByUser
+	}
+
+	// Organization bots can only collaborate on repositories of their organization.
+	if err := organization.CheckBotAllowedInOrg(ctx, u, repo.OwnerID); err != nil {
+		return err
 	}
 
 	return db.WithTx(ctx, func(ctx context.Context) error {

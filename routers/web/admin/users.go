@@ -110,6 +110,7 @@ func NewUser(ctx *context.Context) {
 	ctx.Data["AllowedUserVisibilityModes"] = setting.Service.AllowedUserVisibilityModesSlice.ToVisibleTypeSlice()
 
 	ctx.Data["login_type"] = "0-0"
+	ctx.Data["user_type"] = "individual"
 
 	sources, err := db.Find[auth.Source](ctx, auth.FindSourcesOptions{
 		IsActive: optional.Some(true),
@@ -148,6 +149,13 @@ func NewUserPost(ctx *context.Context) {
 		return
 	}
 
+	isBot := form.UserType == "bot"
+	if !isBot && form.Email == "" {
+		ctx.Data["Err_Email"] = true
+		ctx.RenderWithErr(ctx.Tr("form.Email")+ctx.Tr("form.require_error"), tplUserNew, &form)
+		return
+	}
+
 	u := &user_model.User{
 		Name:      form.UserName,
 		Email:     form.Email,
@@ -160,7 +168,12 @@ func NewUserPost(ctx *context.Context) {
 		Visibility: &form.Visibility,
 	}
 
-	if len(form.LoginType) > 0 {
+	if isBot {
+		// Bots are local accounts without password, see user_model.prepareBotUser. The
+		// authentication fields are hidden in the form; ignore whatever they contain.
+		u.Type = user_model.UserTypeBot
+		u.Passwd = ""
+	} else if len(form.LoginType) > 0 {
 		fields := strings.Split(form.LoginType, "-")
 		if len(fields) == 2 {
 			lType, _ := strconv.ParseInt(fields[0], 10, 0)
@@ -169,7 +182,7 @@ func NewUserPost(ctx *context.Context) {
 			u.LoginName = form.LoginName
 		}
 	}
-	if u.LoginType == auth.NoType || u.LoginType == auth.Plain {
+	if !isBot && (u.LoginType == auth.NoType || u.LoginType == auth.Plain) {
 		if len(form.Password) < setting.MinPasswordLength {
 			ctx.Data["Err_Password"] = true
 			ctx.RenderWithErr(ctx.Tr("auth.password_too_short", setting.MinPasswordLength), tplUserNew, &form)
@@ -216,18 +229,23 @@ func NewUserPost(ctx *context.Context) {
 		return
 	}
 
-	if _, ok := validation.IsEmailDomainAllowed(u.Email); !ok {
+	if _, ok := validation.IsEmailDomainAllowed(u.Email); form.Email != "" && !ok {
 		ctx.Flash.Warning(ctx.Tr("form.email_domain_is_not_allowed", u.Email))
 	}
 
-	log.Trace("Account created by admin (%s): %s", ctx.Doer.Name, u.Name)
+	log.Trace("Account created by admin (%s): %s (bot: %t)", ctx.Doer.Name, u.Name, isBot)
 
-	// Send email notification.
-	if form.SendNotify {
+	// Send email notification. Bots cannot sign in, so there is nothing to notify about.
+	if form.SendNotify && !isBot {
 		mailer.SendRegisterNotifyMail(u)
 	}
 
 	ctx.Flash.Success(ctx.Tr("admin.users.new_success", u.Name))
+	if isBot {
+		// Bots are useless without credentials, which are managed on the edit page.
+		ctx.Redirect(setting.AppSubURL + "/admin/users/" + strconv.FormatInt(u.ID, 10) + "/edit")
+		return
+	}
 	ctx.Redirect(setting.AppSubURL + "/admin/users/" + strconv.FormatInt(u.ID, 10))
 }
 
@@ -277,6 +295,13 @@ func prepareUserInfo(ctx *context.Context) *user_model.User {
 
 	ctx.Data["DefaultGroups"] = defaultGroups
 	ctx.Data["QuotaGroups"] = quotaGroups
+
+	if u.IsBot() {
+		loadBotInfo(ctx, u)
+		if ctx.Written() {
+			return nil
+		}
+	}
 
 	return u
 }
@@ -427,6 +452,9 @@ func EditUserPost(ctx *context.Context) {
 		case password.IsErrIsPwnedRequest(err):
 			ctx.Data["Err_Password"] = true
 			ctx.RenderWithErr(ctx.Tr("auth.password_pwned_err"), tplUserEdit, &form)
+		case user_model.IsErrBotUserInvalid(err):
+			ctx.Data["Err_Password"] = true
+			ctx.RenderWithErr(ctx.Tr("admin.users.bot_auth_not_allowed"), tplUserEdit, &form)
 		default:
 			ctx.ServerError("UpdateUser", err)
 		}

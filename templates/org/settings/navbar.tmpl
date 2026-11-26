@@ -38,6 +38,9 @@
 			</div>
 		</details>
 		{{end}}
+		<a class="{{if .PageIsSettingsBots}}active {{end}}item" href="{{.OrgLink}}/settings/bots">
+			{{ctx.Locale.Tr "org.settings.bots"}}
+		</a>
 		<a class="{{if .PageIsOrgSettingsRepos}}active {{end}}item" href="{{.OrgLink}}/settings/repos">
 			{{ctx.Locale.Tr "settings.repos"}}
 		</a>

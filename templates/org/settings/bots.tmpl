@@ -1,0 +1,60 @@
+{{template "org/settings/layout_head" (dict "ctxData" . "pageClass" "organization settings bots")}}
+<div class="org-setting-content">
+	<h4 class="ui top attached header">
+		{{ctx.Locale.Tr "org.settings.bots"}}
+	</h4>
+	<div class="ui attached segment">
+		<div class="flex-list" id="org-bots">
+			<div class="flex-item">
+				{{ctx.Locale.Tr "org.settings.bots.desc"}}
+			</div>
+			{{range .Bots}}
+				<div class="flex-item">
+					<div class="flex-item-leading">
+						{{ctx.AvatarUtils.Avatar . 32}}
+					</div>
+					<div class="flex-item-main">
+						<a class="flex-item-title" href="{{$.OrgLink}}/settings/bots/{{.Name}}">{{.Name}}</a>
+						{{if .FullName}}<div class="flex-item-body">{{.FullName}}</div>{{end}}
+					</div>
+					<div class="flex-item-trailing">
+						<a class="ui tiny button" href="{{$.OrgLink}}/settings/bots/{{.Name}}">{{ctx.Locale.Tr "org.settings.bots.manage"}}</a>
+					</div>
+				</div>
+			{{else}}
+				<div class="flex-item">
+					<i>{{ctx.Locale.Tr "org.settings.bots.none"}}</i>
+				</div>
+			{{end}}
+		</div>
+	</div>
+
+	<h4 class="ui top attached header">
+		{{ctx.Locale.Tr "org.settings.bots.new"}}
+	</h4>
+	<div class="ui attached segment">
+		<form class="ui form" id="new-org-bot" action="{{.OrgLink}}/settings/bots" method="post">
+			<div class="required field {{if .Err_UserName}}error{{end}}">
+				<label for="user_name">{{ctx.Locale.Tr "username"}}</label>
+				<input id="user_name" name="user_name" value="{{.user_name}}" required maxlength="40" autocorrect="off" autocapitalize="none">
+			</div>
+			<div class="field {{if .Err_FullName}}error{{end}}">
+				<label for="full_name">{{ctx.Locale.Tr "settings.full_name"}}</label>
+				<input id="full_name" name="full_name" value="{{.full_name}}" maxlength="100">
+			</div>
+			<fieldset>
+				<legend>{{ctx.Locale.Tr "org.settings.bots.teams"}}</legend>
+				{{range .Teams}}
+					<label>
+						<input type="checkbox" name="team_ids" value="{{.ID}}">
+						{{.Name}}
+					</label>
+				{{end}}
+				<p class="help">{{ctx.Locale.Tr "org.settings.bots.teams_desc"}}</p>
+			</fieldset>
+			<p class="help">{{ctx.Locale.Tr "org.settings.bots.restrictions"}}</p>
+			<button class="ui primary button">{{ctx.Locale.Tr "org.settings.bots.create"}}</button>
+		</form>
+	</div>
+</div>
+{{template "org/settings/layout_footer" .}}

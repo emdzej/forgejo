@@ -1,0 +1,8 @@
+{{template "org/settings/layout_head" (dict "ctxData" . "pageClass" "organization settings bots")}}
+<div class="org-setting-content">
+	<p>
+		<a href="{{.BotLink}}">{{svg "octicon-arrow-left"}} {{.Bot.Name}}</a>
+	</p>
+	{{template "user/settings/access_token_form" .}}
+</div>
+{{template "org/settings/layout_footer" .}}

@@ -77,14 +77,30 @@ func CreateUser(ctx *context.APIContext) {
 
 	form := web.GetForm(ctx).(*api.CreateUserOption)
 
+	isBot := form.UserType == "bot"
+	if isBot {
+		// Bots authenticate with access tokens or SSH keys only, see user_model.prepareBotUser.
+		if form.Password != "" || form.MustChangePassword != nil || form.SourceID != 0 || form.LoginName != "" {
+			ctx.Error(http.StatusUnprocessableEntity, "BotUserInvalid",
+				errors.New("password, must_change_password, source_id and login_name cannot be set for bot users"))
+			return
+		}
+	} else if form.Email == "" {
+		ctx.Error(http.StatusUnprocessableEntity, "EmailRequired", errors.New("email is required"))
+		return
+	}
+
 	u := &user_model.User{
 		Name:               form.Username,
 		FullName:           form.FullName,
 		Email:              form.Email,
 		Passwd:             form.Password,
-		MustChangePassword: true,
+		MustChangePassword: !isBot,
 		LoginType:          auth.Plain,
 		LoginName:          form.LoginName,
+	}
+	if isBot {
+		u.Type = user_model.UserTypeBot
 	}
 	if form.MustChangePassword != nil {
 		u.MustChangePassword = *form.MustChangePassword
@@ -95,7 +111,7 @@ func CreateUser(ctx *context.APIContext) {
 		return
 	}
 
-	if u.LoginType == auth.Plain {
+	if u.LoginType == auth.Plain && !isBot {
 		if len(form.Password) < setting.MinPasswordLength {
 			err := errors.New("PasswordIsRequired")
 			ctx.Error(http.StatusBadRequest, "PasswordIsRequired", err)
@@ -141,7 +157,8 @@ func CreateUser(ctx *context.APIContext) {
 			db.IsErrNameReserved(err) ||
 			db.IsErrNameCharsNotAllowed(err) ||
 			validation.IsErrEmailInvalid(err) ||
-			db.IsErrNamePatternNotAllowed(err) {
+			db.IsErrNamePatternNotAllowed(err) ||
+			user_model.IsErrBotUserInvalid(err) {
 			ctx.Error(http.StatusUnprocessableEntity, "", err)
 		} else {
 			ctx.Error(http.StatusInternalServerError, "CreateUser", err)
@@ -149,14 +166,17 @@ func CreateUser(ctx *context.APIContext) {
 		return
 	}
 
-	if _, ok := validation.IsEmailDomainAllowed(u.Email); !ok {
-		ctx.Resp.Header().Add("X-Gitea-Warning", fmt.Sprintf("the domain of user email %s conflicts with EMAIL_DOMAIN_ALLOWLIST or EMAIL_DOMAIN_BLOCKLIST", u.Email))
+	// The no-reply placeholder given to bots without an email is not subject to the domain lists.
+	if form.Email != "" {
+		if _, ok := validation.IsEmailDomainAllowed(u.Email); !ok {
+			ctx.Resp.Header().Add("X-Gitea-Warning", fmt.Sprintf("the domain of user email %s conflicts with EMAIL_DOMAIN_ALLOWLIST or EMAIL_DOMAIN_BLOCKLIST", u.Email))
+		}
 	}
 
-	log.Trace("Account created by admin (%s): %s", ctx.Doer().Name, u.Name)
+	log.Trace("Account created by admin (%s): %s (bot: %t)", ctx.Doer().Name, u.Name, isBot)
 
-	// Send email notification.
-	if form.SendNotify {
+	// Send email notification. Bots have no password to sign in with, so there is nothing to notify.
+	if form.SendNotify && !isBot {
 		mailer.SendRegisterNotifyMail(u)
 	}
 	ctx.JSON(http.StatusCreated, convert.ToUser(ctx, u, ctx.Doer()))
@@ -216,6 +236,8 @@ func EditUser(ctx *context.APIContext) {
 			ctx.Error(http.StatusBadRequest, "PasswordComplexity", err)
 		case errors.Is(err, password.ErrIsPwned), password.IsErrIsPwnedRequest(err):
 			ctx.Error(http.StatusBadRequest, "PasswordIsPwned", err)
+		case user_model.IsErrBotUserInvalid(err):
+			ctx.Error(http.StatusUnprocessableEntity, "BotUserInvalid", err)
 		default:
 			ctx.Error(http.StatusInternalServerError, "UpdateAuth", err)
 		}

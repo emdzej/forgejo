@@ -259,7 +259,10 @@ func DeleteUser(ctx context.Context, u *user_model.User, purge bool) error {
 			for _, org := range orgs {
 				if err := org_service.RemoveOrgUser(ctx, org.ID, u.ID); err != nil {
 					if organization.IsErrLastOrgOwner(err) {
-						err = org_service.DeleteOrganization(ctx, org, true)
+						err = DeleteOrgBots(ctx, org)
+						if err == nil {
+							err = org_service.DeleteOrganization(ctx, org, true)
+						}
 						if err != nil {
 							return fmt.Errorf("unable to delete organization %d: %w", org.ID, err)
 						}

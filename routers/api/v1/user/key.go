@@ -206,6 +206,12 @@ func GetPublicKey(ctx *context.APIContext) {
 	ctx.JSON(http.StatusOK, apiKey)
 }
 
+// ListUserPublicKeys lists the public keys of the given user, including private
+// information if the doer owns them or is a site administrator.
+func ListUserPublicKeys(ctx *context.APIContext, u *user_model.User) {
+	listPublicKeys(ctx, u)
+}
+
 // CreateUserPublicKey creates new public key to given user by ID.
 func CreateUserPublicKey(ctx *context.APIContext, form api.CreateKeyOption, uid int64) {
 	if user_model.IsFeatureDisabledWithLoginType(ctx.Doer(), setting.UserFeatureManageSSHKeys) {

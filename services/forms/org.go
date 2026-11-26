@@ -76,3 +76,28 @@ func (f *CreateTeamForm) Validate(req *http.Request, errs binding.Errors) bindin
 	ctx := context.GetValidateContext(req)
 	return middleware.Validate(errs, ctx.Data, f, ctx.Locale)
 }
+
+// CreateOrgBotForm form for creating a bot owned by an organization
+type CreateOrgBotForm struct {
+	UserName string  `binding:"Required;Username;MaxSize(40)"`
+	FullName string  `binding:"MaxSize(100)"`
+	TeamIDs  []int64 `form:"team_ids"`
+}
+
+// Validate validates the fields
+func (f *CreateOrgBotForm) Validate(req *http.Request, errs binding.Errors) binding.Errors {
+	ctx := context.GetValidateContext(req)
+	return middleware.Validate(errs, ctx.Data, f, ctx.Locale)
+}
+
+// EditOrgBotForm form for editing a bot owned by an organization
+type EditOrgBotForm struct {
+	FullName    string `binding:"MaxSize(100)"`
+	Description string `binding:"MaxSize(255)"`
+}
+
+// Validate validates the fields
+func (f *EditOrgBotForm) Validate(req *http.Request, errs binding.Errors) binding.Errors {
+	ctx := context.GetValidateContext(req)
+	return middleware.Validate(errs, ctx.Data, f, ctx.Locale)
+}

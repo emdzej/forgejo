@@ -64,6 +64,8 @@ func toUser(ctx context.Context, user *user_model.User, signed, authed bool) *ap
 		Followers:    user.NumFollowers,
 		Following:    user.NumFollowing,
 		StarredRepos: user.NumStars,
+		// bots are labelled publicly in the web UI as well
+		IsBot: user.IsBot(),
 	}
 
 	result.Visibility = user.Visibility.String()

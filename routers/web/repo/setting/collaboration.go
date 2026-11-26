@@ -102,6 +102,11 @@ func CollaborationPost(ctx *context.Context) {
 	}
 
 	if err = repo_module.AddCollaborator(ctx, ctx.Repo.Repository, u); err != nil {
+		if organization.IsErrOrgBotForeignOrg(err) {
+			ctx.Flash.Error(ctx.Tr("org.bots.foreign_org"))
+			ctx.Redirect(ctx.Repo.RepoLink + "/settings/collaboration")
+			return
+		}
 		if !errors.Is(err, user_model.ErrBlockedByUser) {
 			ctx.ServerError("AddCollaborator", err)
 			return

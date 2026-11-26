@@ -137,6 +137,14 @@ func DeleteOrganization(ctx context.Context, org *org_model.Organization, purge 
 		return models.ErrUserOwnPackages{UID: org.ID}
 	}
 
+	// Bots are user accounts with their own lifecycle; they have to be deleted first,
+	// see user_service.DeleteOrgBots.
+	if count, err := org_model.CountOrgBots(ctx, org.ID); err != nil {
+		return fmt.Errorf("CountOrgBots: %w", err)
+	} else if count > 0 {
+		return org_model.ErrOrgOwnsBots{OrgID: org.ID}
+	}
+
 	if err := org_model.DeleteOrganization(ctx, org); err != nil {
 		return fmt.Errorf("DeleteOrganization: %w", err)
 	}

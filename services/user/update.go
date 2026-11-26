@@ -157,6 +157,14 @@ type UpdateAuthOptions struct {
 }
 
 func UpdateAuth(ctx context.Context, u *user_model.User, opts *UpdateAuthOptions) error {
+	if u.IsBot() {
+		// Bots authenticate with access tokens or SSH keys only, see user_model.prepareBotUser.
+		if opts.Password.ValueOrDefault("") != "" || opts.MustChangePassword.ValueOrDefault(false) ||
+			opts.LoginSource.ValueOrDefault(0) != 0 || opts.LoginName.ValueOrDefault("") != "" {
+			return user_model.ErrBotUserInvalid{Name: u.Name, Reason: "bot users cannot have a password or an external authentication source"}
+		}
+	}
+
 	if has, value := opts.LoginSource.Get(); has {
 		source, err := auth_model.GetSourceByID(ctx, value)
 		if err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"forgejo.org/models"
 	"forgejo.org/models/db"
+	org_model "forgejo.org/models/organization"
 	quota_model "forgejo.org/models/quota"
 	repo_model "forgejo.org/models/repo"
 	user_model "forgejo.org/models/user"
@@ -223,6 +224,9 @@ func SettingsDelete(ctx *context.Context) {
 				ctx.Redirect(ctx.Org.OrgLink + "/settings/delete")
 			} else if models.IsErrUserOwnPackages(err) {
 				ctx.Flash.Error(ctx.Tr("form.org_still_own_packages"))
+				ctx.Redirect(ctx.Org.OrgLink + "/settings/delete")
+			} else if org_model.IsErrOrgOwnsBots(err) {
+				ctx.Flash.Error(ctx.Tr("form.org_still_own_bots"))
 				ctx.Redirect(ctx.Org.OrgLink + "/settings/delete")
 			} else {
 				ctx.ServerError("DeleteOrganization", err)

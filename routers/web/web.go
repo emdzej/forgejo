@@ -958,6 +958,16 @@ func registerRoutes(m *web.Route) {
 			m.Post("/{userid}/delete", admin.DeleteUser)
 			m.Post("/{userid}/avatar", web.Bind(forms.AvatarForm{}), admin.AvatarPost)
 			m.Post("/{userid}/avatar/delete", admin.DeleteAvatar)
+			// credentials of bots, see routers/web/user/setting/bot_credentials.go
+			m.Group("/{userid}", func() {
+				m.Combo("/tokens/new").
+					Get(web.Bind(forms.NewAccessTokenGetForm{}), user_setting.AccessTokenCreate).
+					Post(web.Bind(forms.NewAccessTokenPostForm{}), user_setting.AccessTokenCreatePost)
+				m.Post("/tokens/delete", user_setting.DeleteAccessToken)
+				m.Post("/tokens/regenerate", user_setting.RegenerateAccessToken)
+				m.Post("/keys", web.Bind(forms.AddKeyForm{}), user_setting.BotKeyAddPost)
+				m.Post("/keys/delete", user_setting.BotKeyDeletePost)
+			}, admin.BotCredentialsAssignment)
 		})
 
 		m.Group("/emails", func() {
@@ -1180,6 +1190,23 @@ func registerRoutes(m *web.Route) {
 				}, actions.MustEnableActions)
 
 				m.Methods("GET,POST", "/delete", org.SettingsDelete)
+
+				m.Group("/bots", func() {
+					m.Get("", org_setting.Bots)
+					m.Post("", web.Bind(forms.CreateOrgBotForm{}), org_setting.BotsCreatePost)
+					m.Group("/{bot}", func() {
+						m.Combo("").Get(org_setting.Bot).Post(web.Bind(forms.EditOrgBotForm{}), org_setting.BotEditPost)
+						m.Post("/delete", org_setting.BotDeletePost)
+						// credentials, see routers/web/user/setting/bot_credentials.go
+						m.Combo("/tokens/new").
+							Get(web.Bind(forms.NewAccessTokenGetForm{}), user_setting.AccessTokenCreate).
+							Post(web.Bind(forms.NewAccessTokenPostForm{}), user_setting.AccessTokenCreatePost)
+						m.Post("/tokens/delete", user_setting.DeleteAccessToken)
+						m.Post("/tokens/regenerate", user_setting.RegenerateAccessToken)
+						m.Post("/keys", web.Bind(forms.AddKeyForm{}), user_setting.BotKeyAddPost)
+						m.Post("/keys/delete", user_setting.BotKeyDeletePost)
+					}, org_setting.BotAssignment)
+				})
 
 				m.Group("/blocked_users", func() {
 					m.Get("", org_setting.BlockedUsers)

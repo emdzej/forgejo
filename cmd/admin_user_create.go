@@ -82,6 +82,11 @@ func microcmdUserCreate() *cli.Command {
 				Name:  "fullname",
 				Usage: `The full, human-readable name of the user`,
 			},
+			&cli.StringFlag{
+				Name:  "user-type",
+				Usage: `Type of the account: "individual" or "bot". Bots have no password and authenticate with access tokens or SSH keys only`,
+				Value: "individual",
+			},
 		},
 	}
 }
@@ -91,7 +96,19 @@ func runCreateUser(ctx context.Context, c *cli.Command) error {
 	// duplicate setting loading should be safe at the moment, but it should be refactored & improved in the future.
 	setting.LoadSettings()
 
-	if err := argsSet(c, "email"); err != nil {
+	userType := c.String("user-type")
+	if userType != "individual" && userType != "bot" {
+		return fmt.Errorf(`invalid --user-type %q: must be "individual" or "bot"`, userType)
+	}
+	isBot := userType == "bot"
+
+	if isBot {
+		for _, flag := range []string{"password", "random-password", "must-change-password", "random-password-length"} {
+			if c.IsSet(flag) {
+				return fmt.Errorf("--%s cannot be used with --user-type bot", flag)
+			}
+		}
+	} else if err := argsSet(c, "email"); err != nil {
 		return err
 	}
 
@@ -121,23 +138,28 @@ func runCreateUser(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 
+	// bots never have a password
 	var password string
-	if c.IsSet("password") {
+	switch {
+	case isBot:
+	case c.IsSet("password"):
 		password = c.String("password")
-	} else if c.IsSet("random-password") {
+	case c.IsSet("random-password"):
 		var err error
 		password, err = pwd.Generate(c.Int("random-password-length"))
 		if err != nil {
 			return err
 		}
 		fmt.Printf("generated random password is '%s'\n", password)
-	} else {
+	default:
 		return errors.New("must set either password or random-password flag")
 	}
 
 	isAdmin := c.Bool("admin")
 	mustChangePassword := true // always default to true
-	if c.IsSet("must-change-password") {
+	if isBot {
+		mustChangePassword = false
+	} else if c.IsSet("must-change-password") {
 		// if the flag is set, use the value provided by the user
 		mustChangePassword = c.Bool("must-change-password")
 	} else {
@@ -170,6 +192,9 @@ func runCreateUser(ctx context.Context, c *cli.Command) error {
 		Visibility:         visibility,
 		FullName:           c.String("fullname"),
 	}
+	if isBot {
+		u.Type = user_model.UserTypeBot
+	}
 
 	overwriteDefault := &user_model.CreateUserOverwriteOptions{
 		IsActive:     optional.Some(true),
@@ -198,7 +223,13 @@ func runCreateUser(ctx context.Context, c *cli.Command) error {
 	// arguments should be prepared before creating the user & access token, in case there is anything wrong
 
 	// create the user
-	if err := user_model.CreateUser(ctx, u, overwriteDefault); err != nil {
+	if isBot {
+		// Bots may only be created by administrators; the server CLI has administrative access.
+		// This also exempts the no-reply placeholder email from the email domain lists.
+		if err := user_model.AdminCreateUser(ctx, u, overwriteDefault); err != nil {
+			return fmt.Errorf("CreateUser: %w", err)
+		}
+	} else if err := user_model.CreateUser(ctx, u, overwriteDefault); err != nil {
 		return fmt.Errorf("CreateUser: %w", err)
 	}
 	fmt.Printf("New user '%s' has been successfully created!\n", username)

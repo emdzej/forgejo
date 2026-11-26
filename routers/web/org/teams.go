@@ -179,6 +179,10 @@ func TeamsAction(ctx *context.Context) {
 				ctx.Flash.Error(ctx.Tr("members.user_already_invited_to_team"))
 				ctx.Redirect(ctx.Org.OrgLink + "/teams/" + url.PathEscape(ctx.Org.Team.LowerName))
 				return
+			} else if org_model.IsErrOrgBotForeignOrg(err) {
+				ctx.Flash.Error(ctx.Tr("org.bots.foreign_org"))
+				ctx.Redirect(ctx.Org.OrgLink + "/teams/" + url.PathEscape(ctx.Org.Team.LowerName))
+				return
 			} else if err != nil {
 				ctx.ServerError("InviteOrAddTeamMember", err)
 				return

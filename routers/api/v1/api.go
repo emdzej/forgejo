@@ -1357,6 +1357,25 @@ func Routes() *web.Route {
 				m.Delete("", org.DeleteAvatar)
 			}, reqToken(), reqOrgOwnership())
 			m.Get("/activities/feeds", org.ListOrgActivityFeeds)
+			m.Group("/bots", func() {
+				m.Combo("").Get(org.ListBots).
+					Post(bind(api.CreateOrgBotOption{}), org.CreateBot)
+				m.Group("/{username}", func() {
+					m.Combo("").Get(org.GetBot).
+						Patch(bind(api.EditOrgBotOption{}), org.EditBot).
+						Delete(org.DeleteBot)
+					m.Group("/tokens", func() {
+						m.Combo("").Get(org.ListBotAccessTokens).
+							Post(bind(api.CreateAccessTokenOption{}), org.CreateBotAccessToken)
+						m.Delete("/{id}", org.DeleteBotAccessToken)
+					})
+					m.Group("/keys", func() {
+						m.Combo("").Get(org.ListBotPublicKeys).
+							Post(bind(api.CreateKeyOption{}), org.CreateBotPublicKey)
+						m.Delete("/{id}", org.DeleteBotPublicKey)
+					})
+				}, org.BotAssignment())
+			}, reqToken(), reqOrgOwnership())
 
 			if setting.Quota.Enabled {
 				m.Group("/quota", func() {

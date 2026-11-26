@@ -1,0 +1,8 @@
+{{template "admin/layout_head" (dict "ctxData" . "pageClass" "admin edit user")}}
+	<div class="admin-setting-content">
+		<p>
+			<a href="{{AppSubUrl}}/admin/users/{{.User.ID}}/edit">{{svg "octicon-arrow-left"}} {{.User.Name}}</a>
+		</p>
+		{{template "user/settings/access_token_form" .}}
+	</div>
+{{template "admin/layout_footer" .}}

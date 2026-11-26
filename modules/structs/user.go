@@ -43,6 +43,8 @@ type User struct {
 	IsActive bool `json:"active"`
 	// Is user login prohibited
 	ProhibitLogin bool `json:"prohibit_login"`
+	// Is the account a bot (token / SSH key authentication only)
+	IsBot bool `json:"is_bot"`
 	// the user's location
 	Location string `json:"location"`
 	// the user's pronouns

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"testing"
 
 	auth_model "forgejo.org/models/auth"
@@ -245,4 +246,58 @@ func Test_Cmd_AdminUserStdin(t *testing.T) {
 			}
 		}
 	})
+}
+
+func Test_Cmd_AdminUserCreateBot(t *testing.T) {
+	onApplicationRun(t, func(t *testing.T, _ *url.URL) {
+		t.Run("bot without password or email", func(t *testing.T) {
+			defer tests.PrintCurrentTest(t)()
+			output, err := runMainApp("admin", "user", "create", "--username", "cli-bot", "--user-type", "bot",
+				"--access-token", "--access-token-name", "ci", "--access-token-scopes", "read:repository")
+			require.NoError(t, err)
+			assert.Contains(t, output, "has been successfully created")
+			assert.Contains(t, output, "Access token was successfully created")
+
+			bot := unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "cli-bot"})
+			assert.True(t, bot.IsBot())
+			assert.False(t, bot.IsPasswordSet())
+			assert.False(t, bot.MustChangePassword)
+			assert.NotEmpty(t, bot.Email)
+			unittest.AssertExistsAndLoadBean(t, &auth_model.AccessToken{UID: bot.ID, Name: "ci"})
+
+			// a password cannot be added later on either
+			_, err = runMainApp("admin", "user", "change-password", "--username", "cli-bot", "--password", "password-123456")
+			assertCmdStderrContains(t, err, "bot users cannot have a password")
+			assert.False(t, unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "cli-bot"}).IsPasswordSet())
+		})
+
+		for _, flags := range [][]string{
+			{"--password", "password-123456"},
+			{"--random-password"},
+			{"--must-change-password"},
+		} {
+			t.Run("bot refuses "+flags[0], func(t *testing.T) {
+				defer tests.PrintCurrentTest(t)()
+				args := append([]string{"user", "create", "--username", "cli-bad-bot", "--user-type", "bot"}, flags...)
+				_, err := runMainApp("admin", args...)
+				assertCmdStderrContains(t, err, "cannot be used with --user-type bot")
+				unittest.AssertNotExistsBean(t, &user_model.User{Name: "cli-bad-bot"})
+			})
+		}
+
+		t.Run("unknown user type", func(t *testing.T) {
+			defer tests.PrintCurrentTest(t)()
+			_, err := runMainApp("admin", "user", "create", "--username", "cli-robot", "--user-type", "robot",
+				"--email", "robot@example.com", "--password", "password-123456")
+			assertCmdStderrContains(t, err, "invalid --user-type")
+		})
+	})
+}
+
+// assertCmdStderrContains checks that a runMainApp subprocess failed with the given message on stderr.
+func assertCmdStderrContains(t *testing.T, err error, msg string) {
+	t.Helper()
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Contains(t, string(exitErr.Stderr), msg)
 }

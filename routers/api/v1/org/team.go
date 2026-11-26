@@ -502,6 +502,8 @@ func AddTeamMember(ctx *context.APIContext) {
 	if err := org_service.InviteOrAddTeamMember(ctx, ctx.Doer(), u, ctx.Org().Team); err != nil {
 		if organization.IsErrTeamInviteAlreadyExist(err) {
 			ctx.Error(http.StatusConflict, "InviteOrAddTeamMember", err)
+		} else if organization.IsErrOrgBotForeignOrg(err) {
+			ctx.Error(http.StatusForbidden, "InviteOrAddTeamMember", err)
 		} else {
 			ctx.Error(http.StatusInternalServerError, "InviteOrAddTeamMember", err)
 		}

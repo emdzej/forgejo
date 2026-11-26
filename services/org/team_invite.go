@@ -35,6 +35,20 @@ func CreateTeamInviteByUser(ctx context.Context, inviter, invited *user_model.Us
 
 // InviteOrAddTeamMember invites the user to the team if all team changes should go through invites, or adds them directly otherwise.
 func InviteOrAddTeamMember(ctx context.Context, inviter, invited *user_model.User, team *org_model.Team) error {
+	if invited.IsBot() {
+		ownerID, err := org_model.GetBotOwnerOrgID(ctx, invited.ID)
+		if err != nil {
+			return err
+		}
+		if ownerID != 0 && ownerID != team.OrgID {
+			return org_model.ErrOrgBotForeignOrg{BotName: invited.Name}
+		}
+		if ownerID == team.OrgID {
+			// The organization owns the bot: there is nobody to ask for consent, and bots
+			// cannot sign in to accept an invitation anyway.
+			return AddTeamMemberByCooptation(ctx, team, invited, inviter)
+		}
+	}
 	if setting.Service.AddMembersByInvitations && inviter.ID != invited.ID {
 		isAlreadyOrgMember, err := org_model.IsOrganizationMember(ctx, team.OrgID, invited.ID)
 		if err != nil {

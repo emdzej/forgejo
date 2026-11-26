@@ -62,6 +62,10 @@ func ForgotPasswdPost(ctx *context.Context) {
 	ctx.Data["Email"] = email
 
 	u, err := user_model.GetUserByEmailSimple(ctx, email)
+	if err == nil && u.IsBot() {
+		// Bots have no password to reset; answer as for an unknown address.
+		err = user_model.ErrUserNotExist{Name: u.Name}
+	}
 	if err != nil {
 		if user_model.IsErrUserNotExist(err) {
 			ctx.Data["ResetPwdCodeLives"] = timeutil.MinutesToFriendly(setting.Service.ResetPwdCodeLives, ctx.Locale)
@@ -134,7 +138,7 @@ func commonResetPassword(ctx *context.Context, shouldDeleteToken bool) (*user_mo
 		}
 	}
 
-	if !u.IsLocal() && !(u.IsOAuth2() && u.IsPasswordSet()) {
+	if u.IsBot() || (!u.IsLocal() && !(u.IsOAuth2() && u.IsPasswordSet())) {
 		ctx.Flash.Error(ctx.Tr("auth.non_local_account"), true)
 		return nil, nil
 	}

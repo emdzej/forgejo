@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"forgejo.org/models/db"
+	"forgejo.org/models/organization"
 	"forgejo.org/models/perm"
 	access_model "forgejo.org/models/perm/access"
 	repo_model "forgejo.org/models/repo"
@@ -184,7 +185,7 @@ func AddCollaborator(ctx *context.APIContext) {
 	}
 
 	if err := repo_module.AddCollaborator(ctx, ctx.Repo().Repository, collaborator); err != nil {
-		if errors.Is(err, user_model.ErrBlockedByUser) {
+		if errors.Is(err, user_model.ErrBlockedByUser) || organization.IsErrOrgBotForeignOrg(err) {
 			ctx.Error(http.StatusForbidden, "AddCollaborator", err)
 		} else {
 			ctx.Error(http.StatusInternalServerError, "AddCollaborator", err)

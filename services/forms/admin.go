@@ -18,11 +18,12 @@ type AdminCreateUserForm struct {
 	LoginType          string `binding:"Required"`
 	LoginName          string
 	UserName           string `binding:"Required;Username;MaxSize(40)"`
-	Email              string `binding:"Required;EmailForAdmin;MaxSize(254)"`
+	Email              string `binding:"OmitEmpty;EmailForAdmin;MaxSize(254)"` // required unless UserType is bot
 	Password           string `binding:"MaxSize(255)"`
 	SendNotify         bool
 	MustChangePassword bool
 	Visibility         structs.VisibleType
+	UserType           string `binding:"In(,individual,bot)"`
 }
 
 // Validate validates form fields

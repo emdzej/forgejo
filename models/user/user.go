@@ -752,20 +752,39 @@ type CreateUserOverwriteOptions struct {
 
 // CreateUser creates record of a new user.
 func CreateUser(ctx context.Context, u *User, overwriteDefault ...*CreateUserOverwriteOptions) (err error) {
-	return createUser(ctx, u, false, overwriteDefault...)
+	return createUser(ctx, u, userCreatorSelf, overwriteDefault...)
 }
 
 // AdminCreateUser is used by admins to manually create users
 func AdminCreateUser(ctx context.Context, u *User, overwriteDefault ...*CreateUserOverwriteOptions) (err error) {
-	return createUser(ctx, u, true, overwriteDefault...)
+	return createUser(ctx, u, userCreatorAdmin, overwriteDefault...)
 }
 
+// CreateOrgBotUser is used by organization owners to create bot users for their organization.
+// Unlike AdminCreateUser, the username claiming rules for regular sign-ups apply.
+func CreateOrgBotUser(ctx context.Context, u *User, overwriteDefault ...*CreateUserOverwriteOptions) (err error) {
+	if !u.IsBot() {
+		return ErrBotUserInvalid{Name: u.Name, Reason: "organization owners can only create bot users"}
+	}
+	return createUser(ctx, u, userCreatorOrgOwner, overwriteDefault...)
+}
+
+// userCreator identifies who creates a user, which determines the rules that apply.
+type userCreator int
+
+const (
+	userCreatorSelf     userCreator = iota // sign-up, or the server CLI for regular users
+	userCreatorAdmin                       // site administrators
+	userCreatorOrgOwner                    // organization owners creating organization bots
+)
+
 // createUser creates record of a new user.
-func createUser(ctx context.Context, u *User, createdByAdmin bool, overwriteDefault ...*CreateUserOverwriteOptions) (err error) {
+func createUser(ctx context.Context, u *User, creator userCreator, overwriteDefault ...*CreateUserOverwriteOptions) (err error) {
+	createdByAdmin := creator == userCreatorAdmin
 	overwriteDefaultPresent := len(overwriteDefault) != 0 && overwriteDefault[0] != nil
 
 	// Apply username prefix for non-admin user creation if configured.
-	if !createdByAdmin && setting.Service.UsernamePrefix != "" && !strings.HasPrefix(u.Name, setting.Service.UsernamePrefix) {
+	if creator == userCreatorSelf && setting.Service.UsernamePrefix != "" && !strings.HasPrefix(u.Name, setting.Service.UsernamePrefix) {
 		u.Name = setting.Service.UsernamePrefix + u.Name
 	}
 
@@ -842,12 +861,19 @@ func createUser(ctx context.Context, u *User, createdByAdmin bool, overwriteDefa
 		}
 	}
 
+	if u.IsBot() {
+		if err := prepareBotUser(u, creator); err != nil {
+			return err
+		}
+	}
+
 	// validate data
 	if err := ValidateUser(u); err != nil {
 		return err
 	}
 
-	if createdByAdmin {
+	// Organization bots always get a no-reply placeholder, see prepareBotUser.
+	if createdByAdmin || creator == userCreatorOrgOwner {
 		if err := validation.ValidateEmailForAdmin(u.Email); err != nil {
 			return err
 		}
@@ -927,6 +953,10 @@ func createUser(ctx context.Context, u *User, createdByAdmin bool, overwriteDefa
 
 // IsLastAdminUser check whether user is the last admin
 func IsLastAdminUser(ctx context.Context, user *User) bool {
+	// Bots are not counted as administrators (see countUsers), so they never are the last one.
+	if user.IsBot() {
+		return false
+	}
 	if user.IsAdmin && CountUsers(ctx, &CountUserFilter{IsAdmin: optional.Some(true)}) <= 1 {
 		return true
 	}

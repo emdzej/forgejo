@@ -326,7 +326,10 @@ func deleteAccount(ctx *context.Context, contentType moderation.ReportedContentT
 
 	if reportedUser.IsOrganization() {
 		reportedOrg := organization.OrgFromUser(reportedUser)
-		if err = org_service.DeleteOrganization(ctx, reportedOrg, true); err != nil {
+		if err = user_service.DeleteOrgBots(ctx, reportedOrg); err == nil {
+			err = org_service.DeleteOrganization(ctx, reportedOrg, true)
+		}
+		if err != nil {
 			ctx.Error(http.StatusInternalServerError, fmt.Sprintf("Failed to delete the organization: %s", err.Error()))
 			return
 		}

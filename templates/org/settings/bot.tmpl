@@ -1,0 +1,57 @@
+{{template "org/settings/layout_head" (dict "ctxData" . "pageClass" "organization settings bots")}}
+<div class="org-setting-content">
+	<p>
+		<a href="{{.OrgLink}}/settings/bots">{{svg "octicon-arrow-left"}} {{ctx.Locale.Tr "org.settings.bots"}}</a>
+	</p>
+	<h4 class="ui top attached header">
+		<a href="{{.Bot.HomeLink}}">{{.Bot.Name}}</a>
+	</h4>
+	<div class="ui attached segment">
+		<form class="ui form" id="edit-org-bot" action="{{.BotLink}}" method="post">
+			<div class="field">
+				<label for="full_name">{{ctx.Locale.Tr "settings.full_name"}}</label>
+				<input id="full_name" name="full_name" value="{{.Bot.FullName}}" maxlength="100">
+			</div>
+			<div class="field">
+				<label for="description">{{ctx.Locale.Tr "user.user_bio"}}</label>
+				<textarea id="description" name="description" rows="2" maxlength="255">{{.Bot.Description}}</textarea>
+			</div>
+			<div class="field">
+				<label>{{ctx.Locale.Tr "org.settings.bots.teams"}}</label>
+				<div id="org-bot-teams">
+				{{if .BotTeams}}
+					{{range $i, $team := .BotTeams}}{{if $i}}, {{end}}<a href="{{$.OrgLink}}/teams/{{$team.LowerName | PathEscape}}">{{$team.Name}}</a>{{end}}
+				{{else}}
+					<i>{{ctx.Locale.Tr "org.settings.bots.no_teams"}}</i>
+				{{end}}
+				</div>
+				<p class="help">{{ctx.Locale.Tr "org.settings.bots.teams_manage"}}</p>
+			</div>
+			<button class="ui primary button">{{ctx.Locale.Tr "save"}}</button>
+		</form>
+	</div>
+
+	{{template "shared/bot/credentials" .}}
+
+	<h4 class="ui top attached error header">
+		{{ctx.Locale.Tr "org.settings.bots.delete"}}
+	</h4>
+	<div class="ui attached error segment">
+		<p>{{ctx.Locale.Tr "org.settings.bots.delete_desc"}}</p>
+		<button class="ui red button delete-button" data-modal-id="delete-org-bot" data-url="{{.BotLink}}/delete">
+			{{ctx.Locale.Tr "org.settings.bots.delete"}}
+		</button>
+	</div>
+</div>
+
+<div class="ui g-modal-confirm delete modal" id="delete-org-bot">
+	<div class="header">
+		{{svg "octicon-trash"}}
+		{{ctx.Locale.Tr "org.settings.bots.delete"}}
+	</div>
+	<div class="content">
+		<p>{{ctx.Locale.Tr "org.settings.bots.delete_desc"}}</p>
+	</div>
+	{{template "base/modal_actions_confirm"}}
+</div>
+{{template "org/settings/layout_footer" .}}

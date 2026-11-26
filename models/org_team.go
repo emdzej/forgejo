@@ -246,6 +246,15 @@ func InsertTeamMember(ctx context.Context, team *organization.Team, userID int64
 		return nil, err
 	}
 
+	// Organization bots can only be members of teams of their organization.
+	u, err := user_model.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := organization.CheckBotAllowedInOrg(ctx, u, team.OrgID); err != nil {
+		return nil, err
+	}
+
 	if err := organization.AddOrgUser(ctx, team.OrgID, userID); err != nil {
 		return nil, err
 	}

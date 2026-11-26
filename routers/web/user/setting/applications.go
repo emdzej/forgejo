@@ -11,6 +11,7 @@ import (
 	"forgejo.org/models/db"
 	access_model "forgejo.org/models/perm/access"
 	repo_model "forgejo.org/models/repo"
+	user_model "forgejo.org/models/user"
 	"forgejo.org/modules/base"
 	"forgejo.org/modules/setting"
 	"forgejo.org/services/context"
@@ -35,11 +36,12 @@ type TokenWithResources struct {
 	Repositories []*repo_model.Repository
 }
 
-func loadApplicationsData(ctx *context.Context) {
-	tokens, err := db.Find[auth_model.AccessToken](ctx, auth_model.ListAccessTokensOptions{UserID: ctx.Doer.ID})
+// LoadTokensWithResources returns the access tokens of the user with the repositories
+// repo-specific tokens are limited to.
+func LoadTokensWithResources(ctx *context.Context, owner *user_model.User) ([]*TokenWithResources, error) {
+	tokens, err := db.Find[auth_model.AccessToken](ctx, auth_model.ListAccessTokensOptions{UserID: owner.ID})
 	if err != nil {
-		ctx.ServerError("ListAccessTokens", err)
-		return
+		return nil, err
 	}
 
 	// Load all the AccessTokenResourceRepo for the tokens that we're returning:
@@ -48,15 +50,14 @@ func loadApplicationsData(ctx *context.Context) {
 			// Repos associated with a repo-specific access token should already be visible to the token owner, but it's
 			// possible that access has changed, such as a removed collaborator on a repo -- don't provide info on that
 			// repo if so.
-			permission, err := access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
+			permission, err := access_model.GetUserRepoPermission(ctx, repo, owner)
 			if err != nil {
 				return false, err
 			}
 			return permission.HasAccess(), nil
 		})
 	if err != nil {
-		ctx.ServerError("BulkGetRepositoriesForAccessTokens", err)
-		return
+		return nil, err
 	}
 
 	tokensWithResources := make([]*TokenWithResources, len(tokens))
@@ -65,6 +66,15 @@ func loadApplicationsData(ctx *context.Context) {
 			Token:        tokens[i],
 			Repositories: reposByTokenID[tokens[i].ID],
 		}
+	}
+	return tokensWithResources, nil
+}
+
+func loadApplicationsData(ctx *context.Context) {
+	tokensWithResources, err := LoadTokensWithResources(ctx, ctx.Doer)
+	if err != nil {
+		ctx.ServerError("LoadTokensWithResources", err)
+		return
 	}
 
 	ctx.Data["TokensWithResources"] = tokensWithResources

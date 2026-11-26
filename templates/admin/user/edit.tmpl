@@ -4,14 +4,20 @@
 			{{ctx.Locale.Tr "admin.users.edit_account"}}
 		</h4>
 		<div class="ui attached segment">
+			{{if .User.IsBot}}
+				<div class="ui info message" id="bot-account-info">
+					{{ctx.Locale.Tr "admin.users.bot_account_info"}}
+					{{with .BotOwnerOrg}}{{ctx.Locale.Tr "admin.users.bot_owned_by" .HomeLink .Name}}{{end}}
+				</div>
+			{{end}}
 			<form class="ui form" action="./edit" method="post">
 				{{template "base/disable_form_autofill"}}
 				<div class="field {{if .Err_UserName}}error{{end}}">
 					<label for="user_name">{{ctx.Locale.Tr "username"}}</label>
 					<input id="user_name" name="user_name" value="{{.User.Name}}" autofocus {{if not .User.IsLocal}}disabled{{end}} maxlength="40" autocorrect="off" autocapitalize="none">
 				</div>
-				<!-- Types and name -->
-				<div class="inline required field {{if .Err_LoginType}}error{{end}}">
+				<!-- Types and name; bots are local accounts without password, see prepareBotUser -->
+				<div class="inline required field {{if .Err_LoginType}}error{{end}} {{if .User.IsBot}}tw-hidden{{end}}">
 					<label>{{ctx.Locale.Tr "admin.users.auth_source"}}</label>
 					<div class="ui selection type dropdown">
 						<input type="hidden" id="login_type" name="login_type" value="{{.LoginSource.Type.Int}}-{{.LoginSource.ID}}" required>
@@ -75,7 +81,7 @@
 					</div>
 					<span class="help">{{ctx.Locale.Tr "settings.keep_email_private_popup" .User.GetPlaceholderEmail}}</span>
 				</div>
-				<div class="local field {{if .Err_Password}}error{{end}} {{if not (or (.User.IsLocal) (.User.IsOAuth2))}}tw-hidden{{end}}">
+				<div class="local field {{if .Err_Password}}error{{end}} {{if or .User.IsBot (not (or (.User.IsLocal) (.User.IsOAuth2)))}}tw-hidden{{end}}">
 					<label for="password">{{ctx.Locale.Tr "password"}}</label>
 					<input id="password" name="password" type="password" autocomplete="new-password">
 					<p class="help">{{ctx.Locale.Tr "admin.users.password_helper"}}</p>
@@ -216,6 +222,10 @@
 				</div>
 			</form>
 		</div>
+
+		{{if .User.IsBot}}
+			{{template "shared/bot/credentials" .}}
+		{{end}}
 
 		<h4 class="ui top attached header">
 			{{ctx.Locale.Tr "settings.avatar"}}

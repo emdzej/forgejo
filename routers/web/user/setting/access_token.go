@@ -17,6 +17,7 @@ import (
 	"forgejo.org/models/db"
 	access_model "forgejo.org/models/perm/access"
 	repo_model "forgejo.org/models/repo"
+	user_model "forgejo.org/models/user"
 	"forgejo.org/modules/base"
 	"forgejo.org/modules/log"
 	"forgejo.org/modules/optional"
@@ -33,6 +34,49 @@ import (
 const (
 	tplAccessTokenEdit base.TplName = "user/settings/access_token_edit"
 )
+
+// CredentialOwnerOptions makes the access token handlers of this file, and the bot SSH key
+// handlers, manage the credentials of another user than the doer: a bot managed by a site
+// administrator or an organization owner. The caller is responsible for checking the doer
+// may do so.
+type CredentialOwnerOptions struct {
+	Owner *user_model.User
+	// Link of the page listing the credentials, redirected to after changes.
+	ListLink string
+	// Base link of the credential actions: {ActionLink}/tokens/new, {ActionLink}/keys, ...
+	ActionLink string
+	// Template rendering the token creation form, see user/settings/access_token_form.
+	EditTemplate base.TplName
+}
+
+const credentialOwnerOptionsKey = "AccessCredentialOwnerOptions"
+
+// SetTokenOwner is a middleware helper selecting whose tokens the handlers manage.
+func SetCredentialOwner(ctx *context.Context, opts CredentialOwnerOptions) {
+	ctx.Data[credentialOwnerOptionsKey] = opts
+	ctx.Data["TokenOwner"] = opts.Owner
+}
+
+// setAccessTokenPageData sets the page data of the user settings, unless the page is about
+// the credentials of a bot, whose page already set its own.
+func setAccessTokenPageData(ctx *context.Context, title any) {
+	if _, ok := ctx.Data[credentialOwnerOptionsKey]; ok {
+		return
+	}
+	ctx.Data["Title"] = title
+	ctx.Data["PageIsSettingsApplications"] = true
+}
+
+func credentialOwnerOptions(ctx *context.Context) CredentialOwnerOptions {
+	if opts, ok := ctx.Data[credentialOwnerOptionsKey].(CredentialOwnerOptions); ok {
+		return opts
+	}
+	return CredentialOwnerOptions{
+		Owner:        ctx.Doer,
+		ListLink:     setting.AppSubURL + "/user/settings/applications",
+		EditTemplate: tplAccessTokenEdit,
+	}
+}
 
 func getSelectedRepos(ctx *context.Context, selectedReposRaw []string) ([]*repo_model.Repository, error) {
 	ownerAndName := make([][2]string, len(selectedReposRaw))
@@ -60,9 +104,10 @@ func getSelectedRepos(ctx *context.Context, selectedReposRaw []string) ([]*repo_
 		return nil, fmt.Errorf("one or more of the repositories couldn't be found by owner & name")
 	}
 
+	owner := credentialOwnerOptions(ctx).Owner
 	selectedRepos := make([]*repo_model.Repository, len(selectedReposRaw))
 	for i, repo := range repos {
-		permission, err := access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
+		permission, err := access_model.GetUserRepoPermission(ctx, repo, owner)
 		if err != nil {
 			return nil, err
 		} else if !permission.HasAccess() {
@@ -76,6 +121,7 @@ func getSelectedRepos(ctx *context.Context, selectedReposRaw []string) ([]*repo_
 }
 
 func loadAccessTokenCreateData(ctx *context.Context) {
+	owner := credentialOwnerOptions(ctx).Owner
 	ctx.Data["AccessTokenScopePublicOnly"] = string(auth_model.AccessTokenScopePublicOnly) // note: SliceUtils.Contains won't work in the template if this is a `auth_model.AccessTokenScope`, so it's cast to a string here
 
 	categories := []string{
@@ -89,7 +135,7 @@ func loadAccessTokenCreateData(ctx *context.Context) {
 		"repository",
 		"user",
 	}
-	if ctx.Doer.IsAdmin {
+	if owner.IsAdmin {
 		categories = append(categories, "admin")
 	}
 	slices.Sort(categories)
@@ -153,7 +199,7 @@ func loadAccessTokenCreateData(ctx *context.Context) {
 	}
 	pageSize := 10
 	repoSearch := &repo_model.SearchRepoOptions{
-		Actor:    ctx.Doer,
+		Actor:    owner,
 		Keyword:  repoSearchText,
 		Private:  true,
 		Archived: optional.Some(false),
@@ -161,13 +207,18 @@ func loadAccessTokenCreateData(ctx *context.Context) {
 		// Restrict repositories to those owned by, or collaborated with, by the user.  Repo-specific access tokens
 		// could theoretically be created on any public repository as well, but there wouldn't be much point to that and
 		// it would really balloon the search results to an impractical number of repos.
-		OwnerID: ctx.Doer.ID,
+		OwnerID: owner.ID,
 
 		ListOptions: db.ListOptions{
 			Page:     page,
 			PageSize: pageSize,
 		},
 		OrderBy: db.SearchOrderByAlphabetically, // match sorting in getSelectedRepos for consistency
+	}
+	if owner.IsBot() {
+		// Bots typically own nothing and reach repositories through teams. They are restricted
+		// to what they were explicitly granted, so list every repository they can access.
+		repoSearch.OwnerID = 0
 	}
 	cond := repo_model.SearchRepositoryCondition(repoSearch)
 	// Exclude all the repos that are currently in `form.SelectedRepo` from the search, by omitting them from the search
@@ -206,29 +257,28 @@ func loadAccessTokenCreateData(ctx *context.Context) {
 
 // Applications render manage access token page
 func AccessTokenCreate(ctx *context.Context) {
-	ctx.Data["Title"] = ctx.Tr("settings.applications")
-	ctx.Data["PageIsSettingsApplications"] = true
+	setAccessTokenPageData(ctx, ctx.Tr("settings.applications"))
 
 	loadAccessTokenCreateData(ctx)
 	if ctx.Written() {
 		return
 	}
 
-	ctx.HTML(http.StatusOK, tplAccessTokenEdit)
+	ctx.HTML(http.StatusOK, credentialOwnerOptions(ctx).EditTemplate)
 }
 
 // ApplicationsPost response for add user's access token
 func AccessTokenCreatePost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.NewAccessTokenPostForm)
-	ctx.Data["Title"] = ctx.Tr("settings")
-	ctx.Data["PageIsSettingsApplications"] = true
+	setAccessTokenPageData(ctx, ctx.Tr("settings"))
+	opts := credentialOwnerOptions(ctx)
 
 	renderWithError := func(msg template.HTML) {
 		loadAccessTokenCreateData(ctx)
 		if ctx.Written() {
 			return
 		}
-		ctx.RenderWithErr(msg, tplAccessTokenEdit, form)
+		ctx.RenderWithErr(msg, opts.EditTemplate, form)
 	}
 
 	if ctx.HasError() {
@@ -236,7 +286,7 @@ func AccessTokenCreatePost(ctx *context.Context) {
 		if ctx.Written() {
 			return
 		}
-		ctx.HTML(http.StatusOK, tplAccessTokenEdit)
+		ctx.HTML(http.StatusOK, opts.EditTemplate)
 		return
 	}
 
@@ -251,7 +301,7 @@ func AccessTokenCreatePost(ctx *context.Context) {
 	}
 
 	t := &auth_model.AccessToken{
-		UID:   ctx.Doer.ID,
+		UID:   opts.Owner.ID,
 		Name:  form.Name,
 		Scope: scope,
 	}
@@ -314,23 +364,25 @@ func AccessTokenCreatePost(ctx *context.Context) {
 	ctx.Flash.Success(ctx.Tr("settings.generate_token_success"))
 	ctx.Flash.Info(t.Token)
 
-	ctx.Redirect(setting.AppSubURL + "/user/settings/applications")
+	ctx.Redirect(opts.ListLink)
 }
 
 // DeleteAccessToken response for delete user access token
 func DeleteAccessToken(ctx *context.Context) {
-	if err := auth_model.DeleteAccessTokenByID(ctx, ctx.FormInt64("id"), ctx.Doer.ID); err != nil {
+	opts := credentialOwnerOptions(ctx)
+	if err := auth_model.DeleteAccessTokenByID(ctx, ctx.FormInt64("id"), opts.Owner.ID); err != nil {
 		ctx.Flash.Error("DeleteAccessTokenByID: " + err.Error())
 	} else {
 		ctx.Flash.Success(ctx.Tr("settings.delete_token_success"))
 	}
 
-	ctx.JSONRedirect(setting.AppSubURL + "/user/settings/applications")
+	ctx.JSONRedirect(opts.ListLink)
 }
 
 // RegenerateAccessToken response for regenerating user access token
 func RegenerateAccessToken(ctx *context.Context) {
-	if t, err := auth_model.RegenerateAccessTokenByID(ctx, ctx.FormInt64("id"), ctx.Doer.ID); err != nil {
+	opts := credentialOwnerOptions(ctx)
+	if t, err := auth_model.RegenerateAccessTokenByID(ctx, ctx.FormInt64("id"), opts.Owner.ID); err != nil {
 		if auth_model.IsErrAccessTokenNotExist(err) {
 			ctx.Flash.Error(ctx.Tr("error.not_found"))
 		} else {
@@ -342,5 +394,5 @@ func RegenerateAccessToken(ctx *context.Context) {
 		ctx.Flash.Info(t.Token)
 	}
 
-	ctx.JSONRedirect(setting.AppSubURL + "/user/settings/applications")
+	ctx.JSONRedirect(opts.ListLink)
 }

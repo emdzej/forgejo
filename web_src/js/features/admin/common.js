@@ -19,6 +19,25 @@ export function initAdminCommon() {
   // check whether appUrl(ROOT_URL) is correct, if not, show an error message
   checkAppUrl();
 
+  // New user: bots have no password nor authentication source, and their email is optional
+  document.querySelector('.admin.new.user #user_type')?.addEventListener('change', function () {
+    const isBot = this.value === 'bot';
+    toggleElem('.bot-hidden', !isBot);
+    toggleElem('.bot-only', isBot);
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+    document.getElementById('email-field')?.classList.toggle('required', !isBot);
+    if (isBot) {
+      email?.removeAttribute('required');
+      password?.removeAttribute('required');
+    } else {
+      email?.setAttribute('required', 'required');
+      if (document.getElementById('login_type')?.value?.startsWith('0')) {
+        password?.setAttribute('required', 'required');
+      }
+    }
+  });
+
   // New user
   if ($('.admin.new.user').length > 0 || $('.admin.edit.user').length > 0) {
     document.getElementById('login_type')?.addEventListener('change', function () {

@@ -445,7 +445,11 @@ func Delete(ctx *context.APIContext) {
 	//     "$ref": "#/responses/notFound"
 
 	if err := org.DeleteOrganization(ctx, ctx.Org().Organization, false); err != nil {
-		ctx.Error(http.StatusInternalServerError, "DeleteOrganization", err)
+		if organization.IsErrOrgOwnsBots(err) {
+			ctx.Error(http.StatusUnprocessableEntity, "DeleteOrganization", err)
+		} else {
+			ctx.Error(http.StatusInternalServerError, "DeleteOrganization", err)
+		}
 		return
 	}
 	ctx.Status(http.StatusNoContent)

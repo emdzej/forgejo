@@ -13,9 +13,15 @@ type CreateUserOption struct {
 	// required: true
 	Username string `json:"username" binding:"Required;Username;MaxSize(40)"`
 	FullName string `json:"full_name" binding:"MaxSize(100)"`
-	// required: true
+	// Required unless `user_type` is `bot`. Bots created without an email get a no-reply address.
 	// swagger:strfmt email
-	Email              string `json:"email" binding:"Required;EmailForAdmin;MaxSize(254)"`
+	Email string `json:"email" binding:"OmitEmpty;EmailForAdmin;MaxSize(254)"`
+	// Type of the account. A `bot` has no password and cannot sign in to the web UI; it
+	// authenticates with access tokens or SSH keys only. `password`, `must_change_password`,
+	// `source_id` and `login_name` must not be set for bots.
+	// enum: individual,bot
+	// default: individual
+	UserType           string `json:"user_type" binding:"In(,individual,bot)"`
 	Password           string `json:"password" binding:"MaxSize(255)"`
 	MustChangePassword *bool  `json:"must_change_password"`
 	SendNotify         bool   `json:"send_notify"`
